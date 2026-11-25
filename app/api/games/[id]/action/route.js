@@ -25,15 +25,16 @@ export async function POST(req, { params }) {
 
   // ── JOIN ──────────────────────────────────────────────────────────────────
   if (action === "JOIN") {
-    const name = body.name?.trim();
-    if (!name) return NextResponse.json({ error: "Name required" }, { status: 400 });
+    const displayName = body.name?.trim();
+    if (!displayName) return NextResponse.json({ error: "Name required" }, { status: 400 });
     if (body.code !== game.code) return NextResponse.json({ error: "Invalid code" }, { status: 400 });
 
-    const playerRef = liveRef.child(`players/${name}`);
+    // Case-insensitive: use lowercase as the Firebase key
+    const playerKey = displayName.toLowerCase();
+    const playerRef = liveRef.child(`players/${playerKey}`);
     const existing = await playerRef.get();
 
     if (existing.exists()) {
-      // Only allow rejoin if they pass their sessionKey (stored in their browser)
       const storedKey = existing.val()?.sessionKey;
       if (body.sessionKey && storedKey && body.sessionKey === storedKey) {
         return NextResponse.json({ ok: true, rejoined: true });
@@ -42,8 +43,8 @@ export async function POST(req, { params }) {
     }
 
     const sessionKey = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    await playerRef.set({ name, score: 0, streak: 0, powerups: ["2X", "SUPERSONIC", "STREAK_BOOSTER", "DOUBLE_JEOPARDY"], joinedAt: Date.now(), sessionKey });
-    await adminFirestore.collection("games").doc(id).update({ [`players.${name}`]: true });
+    await playerRef.set({ name: playerKey, displayName, score: 0, streak: 0, powerups: ["2X", "SUPERSONIC", "STREAK_BOOSTER", "DOUBLE_JEOPARDY"], joinedAt: Date.now(), sessionKey });
+    await adminFirestore.collection("games").doc(id).update({ [`players.${playerKey}`]: true });
     return NextResponse.json({ ok: true, sessionKey });
   }
 
@@ -102,7 +103,8 @@ export async function POST(req, { params }) {
     if (!live || live.status !== "ACTIVE") return NextResponse.json({ error: "Round not active" }, { status: 400 });
 
     const { playerName, guess, activePowerup } = body;
-    const playerRef = liveRef.child(`players/${playerName}`);
+    const playerKey = (playerName || "").toLowerCase();
+    const playerRef = liveRef.child(`players/${playerKey}`);
     const playerSnap = await playerRef.get();
     if (!playerSnap.exists()) return NextResponse.json({ error: "Player not found" }, { status: 404 });
     const player = playerSnap.val();
@@ -111,7 +113,7 @@ export async function POST(req, { params }) {
     const isCorrect = Boolean(live.question?.answer) && normalise(guess) === normalise(live.question.answer);
 
     const submissions = live.submissions || {};
-    const alreadySolved = Object.values(submissions).some((s) => s.playerName === playerName && s.isCorrect);
+    const alreadySolved = Object.values(submissions).some((s) => s.playerName === playerKey && s.isCorrect);
     if (alreadySolved) return NextResponse.json({ locked: true });
 
     const priorCorrect = Object.values(submissions).filter((s) => s.isCorrect).length;
@@ -129,11 +131,11 @@ export async function POST(req, { params }) {
       await playerRef.update({ streak: 0 });
     }
 
-    const subId = `${playerName}_${Date.now()}`;
-    await liveRef.child(`submissions/${subId}`).set({ playerName, guess, isCorrect, pointsAwarded: pts, rank, time: Date.now() });
+    const subId = `${playerKey}_${Date.now()}`;
+    await liveRef.child(`submissions/${subId}`).set({ playerName: playerKey, guess, isCorrect, pointsAwarded: pts, rank, time: Date.now() });
 
     if (isCorrect && !live.firstCorrectWinner) {
-      await liveRef.update({ firstCorrectWinner: { playerName, points: pts, time: Date.now() } });
+      await liveRef.update({ firstCorrectWinner: { playerName: playerKey, points: pts, time: Date.now() } });
     }
 
     return NextResponse.json({ isCorrect, points: pts });
