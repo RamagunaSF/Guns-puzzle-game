@@ -33,3 +33,12 @@ export async function POST(req) {
 
   return NextResponse.json({ id: gameRef.id, code });
 }
+
+// PUT /api/games — update existing game
+export async function PUT(req) {
+  const body = await req.json();
+  const { id, title, template, questions, timePerQuestion } = body;
+  if (!id) return NextResponse.json({ error: "Game ID required" }, { status: 400 });
+  await adminFirestore.collection("games").doc(id).update({ title, template, questions, timePerQuestion });
+  return NextResponse.json({ ok: true });
+}

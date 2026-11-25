@@ -32,14 +32,19 @@ export async function POST(req, { params }) {
     const playerRef = liveRef.child(`players/${name}`);
     const existing = await playerRef.get();
 
-    // Allow rejoin — restore previous score/data if they were already in the game
     if (existing.exists()) {
-      return NextResponse.json({ ok: true, rejoined: true });
+      // Only allow rejoin if they pass their sessionKey (stored in their browser)
+      const storedKey = existing.val()?.sessionKey;
+      if (body.sessionKey && storedKey && body.sessionKey === storedKey) {
+        return NextResponse.json({ ok: true, rejoined: true });
+      }
+      return NextResponse.json({ error: "Name already taken" }, { status: 400 });
     }
 
-    await playerRef.set({ name, score: 0, streak: 0, powerups: ["2X", "SUPERSONIC", "STREAK_BOOSTER", "DOUBLE_JEOPARDY"], joinedAt: Date.now() });
+    const sessionKey = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    await playerRef.set({ name, score: 0, streak: 0, powerups: ["2X", "SUPERSONIC", "STREAK_BOOSTER", "DOUBLE_JEOPARDY"], joinedAt: Date.now(), sessionKey });
     await adminFirestore.collection("games").doc(id).update({ [`players.${name}`]: true });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, sessionKey });
   }
 
   // ── START_GAME ────────────────────────────────────────────────────────────

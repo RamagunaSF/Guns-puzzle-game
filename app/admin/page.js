@@ -73,12 +73,18 @@ export default function AdminDashboard() {
                   {" · "}{g.template}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => router.push(`/admin/host/${g.id}`)}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                   {g.status === "ACTIVE" ? "Back to Live" : "Host Game"}
+                </button>
+                <button
+                  onClick={() => router.push(`/admin/edit/${g.id}`)}
+                  className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                >
+                  Edit
                 </button>
                 <button
                   onClick={() => deleteGame(g.id)}

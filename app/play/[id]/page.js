@@ -30,6 +30,7 @@ export default function PlayPage() {
   const [secs, setSecs] = useState(null);
   const [joining, setJoining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const [showPowerupPicker, setShowPowerupPicker] = useState(false);
   const prevStatus = useRef(null);
   const prevQuestion = useRef(null);
@@ -62,6 +63,7 @@ export default function PlayPage() {
       setFeedback(null);
       setActivePowerup(null);
       setShowPowerupPicker(false);
+      setImgLoaded(false);
       if (data.status === "ACTIVE") setPhase("playing");
     }
 
@@ -93,13 +95,15 @@ export default function PlayPage() {
     if (!name.trim() || !code.trim()) return setError("Enter your name and room code.");
     setJoining(true);
     setError("");
+    const sessionKey = localStorage.getItem(`sessionKey_${id}_${name.trim()}`);
     const res = await fetch(`/api/games/${id}/action`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "JOIN", name: name.trim(), code: code.trim() }),
+      body: JSON.stringify({ action: "JOIN", name: name.trim(), code: code.trim(), sessionKey }),
     });
     const data = await res.json();
     if (data.error) { setError(data.error); setJoining(false); return; }
+    if (data.sessionKey) localStorage.setItem(`sessionKey_${id}_${name.trim()}`, data.sessionKey);
     setPhase("lobby");
     setJoining(false);
   };
@@ -126,6 +130,18 @@ export default function PlayPage() {
   const question = live?.question;
   const letterGroups = buildLetterBoxes(question?.answer || "");
   const hasAnsweredCorrectly = feedback?.type === "correct";
+
+  // Preload next question image whenever we're on leaderboard/result
+  useEffect(() => {
+    if (!live?.currentQuestion === undefined) return;
+    const game_questions = live?.gameQuestions;
+    if (!game_questions) return;
+    const nextQ = game_questions[(live.currentQuestion || 0) + 1];
+    if (nextQ?.mediaUrl && nextQ?.mediaType === "image") {
+      const img = new Image();
+      img.src = nextQ.mediaUrl;
+    }
+  }, [live?.currentQuestion, live?.status]);
 
   // ── JOIN SCREEN ───────────────────────────────────────────────────────────
   if (phase === "join") {
@@ -226,11 +242,21 @@ export default function PlayPage() {
         <div className="flex-1 flex flex-col items-center px-4 py-4 space-y-5">
           {/* Media */}
           {question.mediaUrl && question.mediaType === "image" && (
-            <img
-              src={question.mediaUrl}
-              alt="puzzle"
-              className="max-h-56 rounded-2xl shadow-2xl object-contain"
-            />
+            <div className="relative w-full flex justify-center">
+              {!imgLoaded && (
+                <div className="w-full max-h-56 h-48 rounded-2xl bg-indigo-900/50 animate-pulse flex items-center justify-center">
+                  <span className="text-indigo-400 text-sm">Loading image...</span>
+                </div>
+              )}
+              <img
+                src={question.mediaUrl}
+                alt="puzzle"
+                loading="eager"
+                fetchPriority="high"
+                onLoad={() => setImgLoaded(true)}
+                className={`max-h-56 rounded-2xl shadow-2xl object-contain transition-opacity duration-300 ${imgLoaded ? "opacity-100" : "opacity-0 absolute"}`}
+              />
+            </div>
           )}
           {question.mediaUrl && question.mediaType === "audio" && (
             <div className="w-full rounded-2xl bg-indigo-900/50 p-4">
@@ -410,8 +436,8 @@ export default function PlayPage() {
             <p className="text-indigo-300">{playerData?.score ?? 0} pts</p>
           </div>
           <div className="rounded-2xl bg-white/10 backdrop-blur p-4 space-y-2">
-            <p className="text-sm font-semibold text-indigo-300 mb-2">Final Leaderboard</p>
-            {players.map((p, i) => (
+            <p className="text-sm font-semibold text-indigo-300 mb-2">Final Leaderboard — Top 10</p>
+            {players.slice(0, 10).map((p, i) => (
               <div key={p.name} className={`flex justify-between text-sm py-1 ${p.name === name ? "font-bold text-yellow-300" : ""}`}>
                 <span>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`} {p.name}</span>
                 <span>{p.score} pts</span>
