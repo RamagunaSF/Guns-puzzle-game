@@ -13,14 +13,14 @@ const TEMPLATES = [
   { id: "media_clip", label: "Media Clip", desc: "Play audio/video → players guess the answer" },
 ];
 
-const EMPTY_QUESTION = { mediaUrl: "", mediaType: "image", questionText: "", answer: "", hint: "", timeLimit: 30 };
+const makeEmptyQuestion = (timeLimit) => ({ mediaUrl: "", mediaType: "image", questionText: "", answer: "", hint: "", timeLimit });
 
 export default function CreateGamePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [template, setTemplate] = useState("rebus");
   const [timePerQuestion, setTimePerQuestion] = useState(30);
-  const [questions, setQuestions] = useState([{ ...EMPTY_QUESTION }]);
+  const [questions, setQuestions] = useState([makeEmptyQuestion(30)]);
   const [uploading, setUploading] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -30,7 +30,12 @@ export default function CreateGamePage() {
     setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, [field]: value } : q)));
   };
 
-  const addQuestion = () => setQuestions((qs) => [...qs, { ...EMPTY_QUESTION }]);
+  const handleDefaultTimeChange = (val) => {
+    setTimePerQuestion(val);
+    setQuestions((qs) => qs.map((q) => ({ ...q, timeLimit: val })));
+  };
+
+  const addQuestion = () => setQuestions((qs) => [...qs, makeEmptyQuestion(timePerQuestion)]);
 
   const removeQuestion = (idx) =>
     setQuestions((qs) => qs.filter((_, i) => i !== idx));
@@ -58,7 +63,7 @@ export default function CreateGamePage() {
     );
   };
 
-  const handleSave = async () => {
+  const handleSave = async (andHost = false) => {
     if (!title.trim()) return setError("Game title is required.");
     if (questions.some((q) => !q.answer.trim())) return setError("Every question needs an answer.");
     setSaving(true);
@@ -69,8 +74,13 @@ export default function CreateGamePage() {
       body: JSON.stringify({ title, template, questions, timePerQuestion }),
     });
     const data = await res.json();
-    if (data.id) router.push(`/admin/host/${data.id}`);
-    else { setError(data.error || "Failed to save."); setSaving(false); }
+    if (data.id) {
+      if (andHost) router.push(`/admin/host/${data.id}`);
+      else router.push("/admin");
+    } else {
+      setError(data.error || "Failed to save.");
+      setSaving(false);
+    }
   };
 
   return (
@@ -116,15 +126,22 @@ export default function CreateGamePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Default Time per Question (seconds)</label>
-            <input
-              type="number"
-              min={10}
-              max={120}
-              className="w-32 rounded-lg border px-3 py-2 text-sm"
+            <label className="block text-sm font-medium mb-1">Default Time per Question</label>
+            <select
+              className="w-48 rounded-lg border px-3 py-2 text-sm"
               value={timePerQuestion}
-              onChange={(e) => setTimePerQuestion(Number(e.target.value))}
-            />
+              onChange={(e) => handleDefaultTimeChange(Number(e.target.value))}
+            >
+              <option value={0}>No time limit</option>
+              <option value={15}>15 seconds</option>
+              <option value={20}>20 seconds</option>
+              <option value={30}>30 seconds</option>
+              <option value={45}>45 seconds</option>
+              <option value={60}>60 seconds</option>
+              <option value={90}>90 seconds</option>
+              <option value={120}>120 seconds</option>
+            </select>
+            <p className="text-xs text-slate-400 mt-1">Applied to all questions — override per question below</p>
           </div>
         </div>
 
@@ -212,15 +229,21 @@ export default function CreateGamePage() {
 
               {/* Per-question timer override */}
               <div>
-                <label className="block text-sm font-medium mb-1">Time Limit (seconds)</label>
-                <input
-                  type="number"
-                  min={10}
-                  max={120}
-                  className="w-24 rounded-lg border px-3 py-2 text-sm"
+                <label className="block text-sm font-medium mb-1">Time Limit (override)</label>
+                <select
+                  className="w-44 rounded-lg border px-3 py-2 text-sm"
                   value={q.timeLimit}
                   onChange={(e) => updateQuestion(idx, "timeLimit", Number(e.target.value))}
-                />
+                >
+                  <option value={0}>No time limit</option>
+                  <option value={15}>15 seconds</option>
+                  <option value={20}>20 seconds</option>
+                  <option value={30}>30 seconds</option>
+                  <option value={45}>45 seconds</option>
+                  <option value={60}>60 seconds</option>
+                  <option value={90}>90 seconds</option>
+                  <option value={120}>120 seconds</option>
+                </select>
               </div>
             </div>
           ))}
@@ -235,13 +258,22 @@ export default function CreateGamePage() {
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {saving ? "Saving..." : `Save Game & Get Room Code (${questions.length} questions)`}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => handleSave(false)}
+            disabled={saving}
+            className="flex-1 rounded-xl border-2 border-indigo-600 py-3 font-bold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save Draft"}
+          </button>
+          <button
+            onClick={() => handleSave(true)}
+            disabled={saving}
+            className="flex-1 rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save & Host Now"}
+          </button>
+        </div>
       </div>
     </div>
   );

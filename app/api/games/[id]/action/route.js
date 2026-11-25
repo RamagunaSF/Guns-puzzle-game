@@ -13,7 +13,6 @@ function applyPowerup(basePoints, powerup) {
   return basePoints;
 }
 
-// POST /api/games/[id]/action
 export async function POST(req, { params }) {
   const { id } = await params;
   const body = await req.json();
@@ -32,7 +31,11 @@ export async function POST(req, { params }) {
 
     const playerRef = liveRef.child(`players/${name}`);
     const existing = await playerRef.get();
-    if (existing.exists()) return NextResponse.json({ error: "Name taken" }, { status: 400 });
+
+    // Allow rejoin — restore previous score/data if they were already in the game
+    if (existing.exists()) {
+      return NextResponse.json({ ok: true, rejoined: true });
+    }
 
     await playerRef.set({ name, score: 0, streak: 0, powerups: ["2X", "SUPERSONIC", "STREAK_BOOSTER", "DOUBLE_JEOPARDY"], joinedAt: Date.now() });
     await adminFirestore.collection("games").doc(id).update({ [`players.${name}`]: true });
@@ -42,6 +45,7 @@ export async function POST(req, { params }) {
   // ── START_GAME ────────────────────────────────────────────────────────────
   if (action === "START_GAME") {
     const firstQ = game.questions[0];
+    const timeLimit = firstQ.timeLimit || game.timePerQuestion || 30;
     const liveState = {
       status: "ACTIVE",
       currentQuestion: 0,
@@ -50,7 +54,7 @@ export async function POST(req, { params }) {
       firstCorrectWinner: null,
       resultRevealed: false,
       startedAt: Date.now(),
-      timerEndsAt: Date.now() + (firstQ.timeLimit || game.timePerQuestion || 30) * 1000,
+      timerEndsAt: timeLimit > 0 ? Date.now() + timeLimit * 1000 : 0,
     };
     await liveRef.update(liveState);
     await adminFirestore.collection("games").doc(id).update({ status: "ACTIVE", currentQuestion: 0 });
@@ -59,23 +63,30 @@ export async function POST(req, { params }) {
 
   // ── NEXT_QUESTION ─────────────────────────────────────────────────────────
   if (action === "NEXT_QUESTION") {
-    const nextIdx = (game.currentQuestion ?? 0) + 1;
+    // Read live state for accurate currentQuestion (not stale Firestore)
+    const liveSnap = await liveRef.get();
+    const live = liveSnap.val();
+    const nextIdx = (live?.currentQuestion ?? 0) + 1;
+
     if (nextIdx >= game.questions.length) {
       await liveRef.update({ status: "ENDED" });
       await adminFirestore.collection("games").doc(id).update({ status: "ENDED", currentQuestion: nextIdx });
       return NextResponse.json({ ok: true, ended: true });
     }
+
     const nextQ = game.questions[nextIdx];
+    const timeLimit = nextQ.timeLimit || game.timePerQuestion || 30;
     await liveRef.update({
+      status: "ACTIVE",   // ← fix: reset to ACTIVE for next question
       currentQuestion: nextIdx,
       question: { ...nextQ, hintRevealed: false, revealedAnswer: "" },
       submissions: {},
       firstCorrectWinner: null,
       resultRevealed: false,
       startedAt: Date.now(),
-      timerEndsAt: Date.now() + (nextQ.timeLimit || game.timePerQuestion || 30) * 1000,
+      timerEndsAt: timeLimit > 0 ? Date.now() + timeLimit * 1000 : 0,
     });
-    await adminFirestore.collection("games").doc(id).update({ currentQuestion: nextIdx });
+    await adminFirestore.collection("games").doc(id).update({ currentQuestion: nextIdx, status: "ACTIVE" });
     return NextResponse.json({ ok: true });
   }
 
@@ -144,8 +155,37 @@ export async function POST(req, { params }) {
 
   // ── CLOSE_QUESTION ────────────────────────────────────────────────────────
   if (action === "CLOSE_QUESTION") {
-    await liveRef.update({ status: "LEADERBOARD", timerEndsAt: Date.now() });
+    const liveSnap = await liveRef.get();
+    const live = liveSnap.val();
+    const answer = live?.question?.answer || "";
+    await liveRef.update({
+      status: "LEADERBOARD",
+      timerEndsAt: Date.now(),
+      "question/revealedAnswer": answer,
+      resultRevealed: true,
+    });
     return NextResponse.json({ ok: true });
+  }
+
+  // ── RESTART_GAME ──────────────────────────────────────────────────────────
+  if (action === "RESTART_GAME") {
+    const newCode = String(Math.floor(1000 + Math.random() * 9000));
+    await liveRef.set({
+      status: "LOBBY",
+      currentQuestion: -1,
+      players: {},
+      submissions: {},
+      question: null,
+      firstCorrectWinner: null,
+      resultRevealed: false,
+    });
+    await adminFirestore.collection("games").doc(id).update({
+      status: "LOBBY",
+      currentQuestion: -1,
+      players: {},
+      code: newCode,
+    });
+    return NextResponse.json({ ok: true, code: newCode });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
