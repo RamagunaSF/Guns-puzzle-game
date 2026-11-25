@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect } from "react";
 
 const ADMIN_PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || "1234";
