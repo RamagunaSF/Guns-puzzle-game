@@ -56,6 +56,36 @@ function shuffleForQuestion(arr, seed) {
   return a;
 }
 
+// Returns shuffled boxes ensuring the correct colour doesn't land in the same
+// position 3+ times in a row across consecutive questions.
+// Deterministic — all players compute the same result for the same qIdx.
+function getShuffledBoxes(qIdx, questions) {
+  const shuffled = shuffleForQuestion(COLOUR_BOXES, qIdx + 1);
+  if (!questions || qIdx < 2) return shuffled;
+
+  const correctColour = questions[qIdx]?.correctColour;
+  if (!correctColour) return shuffled;
+
+  const posFor = (idx) => {
+    const s = shuffleForQuestion(COLOUR_BOXES, idx + 1);
+    return s.findIndex((b) => b.key === questions[idx]?.correctColour);
+  };
+
+  const curPos  = shuffled.findIndex((b) => b.key === correctColour);
+  const prev1Pos = posFor(qIdx - 1);
+  const prev2Pos = posFor(qIdx - 2);
+
+  if (curPos === prev1Pos && curPos === prev2Pos) {
+    // Swap correct colour with the box at the next position (wraps around)
+    const swapPos = (curPos + 1) % 4;
+    const result = [...shuffled];
+    [result[curPos], result[swapPos]] = [result[swapPos], result[curPos]];
+    return result;
+  }
+
+  return shuffled;
+}
+
 export default function PlayPage() {
   const { id } = useParams();
   const [phase, setPhase] = useState("join");
@@ -216,11 +246,11 @@ export default function PlayPage() {
     setSubmitting(false);
   };
 
-  // Shuffle colour boxes deterministically per question
+  // Shuffle colour boxes — deterministic, no same-position repeat 3+ times in a row
   const shuffledBoxes = useMemo(() => {
     const qIdx = live?.currentQuestion ?? 0;
-    return shuffleForQuestion(COLOUR_BOXES, qIdx + 1);
-  }, [live?.currentQuestion]);
+    return getShuffledBoxes(qIdx, game?.questions);
+  }, [live?.currentQuestion, game?.questions]);
 
   const isColourFlash = game?.template === "colour_flash";
   const question = live?.question;

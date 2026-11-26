@@ -198,10 +198,11 @@ export async function POST(req, { params }) {
         await winnerRef.update({ score: (w.score || 0) + 100, streak: (w.streak || 0) + 1 });
       }
 
-      // Top 9 eligible tappers (not removed, not winner) get 50 pts each
+      // Top 9 eligible tappers who tapped the CORRECT colour (not removed, not winner) get 50 pts
+      const correctColour = live.question?.correctColour;
       const taps = live.taps || {};
       const eligible = Object.entries(taps)
-        .filter(([k, t]) => k !== winnerKey && !t.removed)
+        .filter(([k, t]) => k !== winnerKey && !t.removed && (!correctColour || t.colour === correctColour))
         .sort((a, b) => a[1].time - b[1].time)
         .slice(0, 9);
 

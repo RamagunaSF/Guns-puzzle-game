@@ -472,11 +472,14 @@ export default function HostGamePage() {
                   {activeTaps.map((t, i) => {
                     const cm = COLOUR_META[t.colour] || {};
                     const isWinner = t.key === live.winnerKey;
+                    const isCorrectColour = currentQ?.correctColour && t.colour === currentQ.correctColour;
                     return (
                       <div key={t.key}
                         className={`flex items-center justify-between rounded-xl px-4 py-3 border transition ${
                           isWinner
                             ? "bg-amber-50 border-amber-200"
+                            : isCorrectColour
+                            ? "bg-emerald-50 border-emerald-200"
                             : "bg-slate-50 border-slate-100 hover:border-slate-200"
                         }`}>
                         <div className="flex items-center gap-3">
@@ -484,6 +487,12 @@ export default function HostGamePage() {
                           <div className={`h-6 w-6 rounded-lg ${cm.bg || "bg-slate-400"} shadow-sm flex-shrink-0`} />
                           <span className="font-semibold text-sm text-slate-800">{t.displayName}</span>
                           {isWinner && <span className="text-amber-600 text-sm font-bold">👑 Winner</span>}
+                          {!isWinner && isCorrectColour && (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">✓ Correct</span>
+                          )}
+                          {!isWinner && !isCorrectColour && currentQ?.correctColour && (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-400">✗ Wrong colour</span>
+                          )}
                         </div>
                         {!live.winnerKey && isActive && (
                           <div className="flex gap-2">
