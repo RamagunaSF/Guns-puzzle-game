@@ -13,6 +13,8 @@ function applyPowerup(basePoints, powerup) {
   return basePoints;
 }
 
+const normalise = (s) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+
 export async function POST(req, { params }) {
   const { id } = await params;
   const body = await req.json();
@@ -29,7 +31,6 @@ export async function POST(req, { params }) {
     if (!displayName) return NextResponse.json({ error: "Name required" }, { status: 400 });
     if (body.code !== game.code) return NextResponse.json({ error: "Invalid code" }, { status: 400 });
 
-    // Case-insensitive: use lowercase as the Firebase key
     const playerKey = displayName.toLowerCase();
     const playerRef = liveRef.child(`players/${playerKey}`);
     const existing = await playerRef.get();
@@ -57,6 +58,9 @@ export async function POST(req, { params }) {
       currentQuestion: 0,
       question: { ...firstQ, hintRevealed: false, revealedAnswer: "" },
       submissions: {},
+      taps: {},
+      answerRevealed: false,
+      winnerKey: null,
       firstCorrectWinner: null,
       resultRevealed: false,
       startedAt: Date.now(),
@@ -69,7 +73,6 @@ export async function POST(req, { params }) {
 
   // ── NEXT_QUESTION ─────────────────────────────────────────────────────────
   if (action === "NEXT_QUESTION") {
-    // Read live state for accurate currentQuestion (not stale Firestore)
     const liveSnap = await liveRef.get();
     const live = liveSnap.val();
     const nextIdx = (live?.currentQuestion ?? 0) + 1;
@@ -83,10 +86,13 @@ export async function POST(req, { params }) {
     const nextQ = game.questions[nextIdx];
     const timeLimit = nextQ.timeLimit || game.timePerQuestion || 30;
     await liveRef.update({
-      status: "ACTIVE",   // ← fix: reset to ACTIVE for next question
+      status: "ACTIVE",
       currentQuestion: nextIdx,
       question: { ...nextQ, hintRevealed: false, revealedAnswer: "" },
       submissions: {},
+      taps: {},
+      answerRevealed: false,
+      winnerKey: null,
       firstCorrectWinner: null,
       resultRevealed: false,
       startedAt: Date.now(),
@@ -96,7 +102,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({ ok: true });
   }
 
-  // ── SUBMIT_GUESS ──────────────────────────────────────────────────────────
+  // ── SUBMIT_GUESS (Rebus / Text Quiz / Media Clip) ─────────────────────────
   if (action === "SUBMIT_GUESS") {
     const liveSnap = await liveRef.get();
     const live = liveSnap.val();
@@ -109,23 +115,35 @@ export async function POST(req, { params }) {
     if (!playerSnap.exists()) return NextResponse.json({ error: "Player not found" }, { status: 404 });
     const player = playerSnap.val();
 
-    const normalise = (s) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
-    const isCorrect = Boolean(live.question?.answer) && normalise(guess) === normalise(live.question.answer);
-
+    const scoringEnabled = live.question?.scoringEnabled !== false;
+    const multiAttempt = live.question?.multiAttempt === true;
     const submissions = live.submissions || {};
-    const alreadySolved = Object.values(submissions).some((s) => s.playerName === playerKey && s.isCorrect);
-    if (alreadySolved) return NextResponse.json({ locked: true });
 
+    // If locked (not multiAttempt), block after any first submission
+    if (!multiAttempt) {
+      const alreadySubmitted = Object.values(submissions).some((s) => s.playerName === playerKey);
+      if (alreadySubmitted) return NextResponse.json({ locked: true });
+    } else {
+      // multiAttempt: only block after a correct answer
+      const alreadySolved = Object.values(submissions).some((s) => s.playerName === playerKey && s.isCorrect);
+      if (alreadySolved) return NextResponse.json({ locked: true });
+    }
+
+    const isCorrect = Boolean(live.question?.answer) && normalise(guess) === normalise(live.question.answer);
     const priorCorrect = Object.values(submissions).filter((s) => s.isCorrect).length;
     const rank = isCorrect ? priorCorrect + 1 : null;
-    let pts = isCorrect ? pointsForRank(rank, live.question?.hintRevealed) : 0;
-    pts = applyPowerup(pts, activePowerup);
+
+    let pts = 0;
+    if (scoringEnabled && isCorrect) {
+      pts = pointsForRank(rank, live.question?.hintRevealed);
+      pts = applyPowerup(pts, activePowerup);
+    }
 
     if (activePowerup === "DOUBLE_JEOPARDY" && !isCorrect) {
       await playerRef.update({ score: Math.max(0, (player.score || 0) - pts) });
     } else if (isCorrect) {
       const newStreak = (player.streak || 0) + 1;
-      const streakBonus = activePowerup === "STREAK_BOOSTER" ? newStreak * 5 : 0;
+      const streakBonus = (scoringEnabled && activePowerup === "STREAK_BOOSTER") ? newStreak * 5 : 0;
       await playerRef.update({ score: (player.score || 0) + pts + streakBonus, streak: newStreak });
     } else {
       await playerRef.update({ streak: 0 });
@@ -139,6 +157,74 @@ export async function POST(req, { params }) {
     }
 
     return NextResponse.json({ isCorrect, points: pts });
+  }
+
+  // ── TAP_COLOUR (Colour Flash template) ────────────────────────────────────
+  if (action === "TAP_COLOUR") {
+    const liveSnap = await liveRef.get();
+    const live = liveSnap.val();
+    if (!live || live.status !== "ACTIVE") return NextResponse.json({ error: "Round not active" }, { status: 400 });
+
+    const { playerName, colour } = body;
+    const playerKey = (playerName || "").toLowerCase();
+    const multiAttempt = live.question?.multiAttempt === true;
+    const taps = live.taps || {};
+    const existingTap = taps[playerKey];
+
+    // If locked and already tapped, block
+    if (!multiAttempt && existingTap && !existingTap.removed) return NextResponse.json({ locked: true });
+
+    await liveRef.child(`taps/${playerKey}`).set({ colour, time: Date.now(), removed: false });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── MARK_WINNER (Colour Flash) ────────────────────────────────────────────
+  if (action === "MARK_WINNER") {
+    const { winnerKey } = body;
+    const liveSnap = await liveRef.get();
+    const live = liveSnap.val();
+    const scoringEnabled = live.question?.scoringEnabled !== false;
+
+    if (scoringEnabled) {
+      // Winner gets full points (100)
+      const winnerRef = liveRef.child(`players/${winnerKey}`);
+      const winnerSnap = await winnerRef.get();
+      if (winnerSnap.exists()) {
+        const w = winnerSnap.val();
+        await winnerRef.update({ score: (w.score || 0) + 100, streak: (w.streak || 0) + 1 });
+      }
+
+      // Top 9 eligible tappers (not removed, not winner) get 50 pts each
+      const taps = live.taps || {};
+      const eligible = Object.entries(taps)
+        .filter(([k, t]) => k !== winnerKey && !t.removed)
+        .sort((a, b) => a[1].time - b[1].time)
+        .slice(0, 9);
+
+      for (const [k] of eligible) {
+        const pRef = liveRef.child(`players/${k}`);
+        const pSnap = await pRef.get();
+        if (pSnap.exists()) {
+          await pRef.update({ score: (pSnap.val().score || 0) + 50 });
+        }
+      }
+    }
+
+    await liveRef.update({ winnerKey, status: "LEADERBOARD" });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── REMOVE_TAPPER (Colour Flash) ──────────────────────────────────────────
+  if (action === "REMOVE_TAPPER") {
+    const { tapperKey } = body;
+    await liveRef.child(`taps/${tapperKey}/removed`).set(true);
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── REVEAL_ANSWER (Colour Flash answer side) ──────────────────────────────
+  if (action === "REVEAL_ANSWER") {
+    await liveRef.child("answerRevealed").set(true);
+    return NextResponse.json({ ok: true });
   }
 
   // ── REVEAL_HINT ───────────────────────────────────────────────────────────
@@ -182,8 +268,11 @@ export async function POST(req, { params }) {
       currentQuestion: -1,
       players: {},
       submissions: {},
+      taps: {},
       question: null,
       firstCorrectWinner: null,
+      winnerKey: null,
+      answerRevealed: false,
       resultRevealed: false,
     });
     await adminFirestore.collection("games").doc(id).update({

@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { ref as dbRef, onValue } from "firebase/database";
@@ -14,10 +14,29 @@ const POWERUP_META = {
   DOUBLE_JEOPARDY: { label: "Double Jeopardy", icon: "🎲", color: "bg-purple-500", desc: "2× if right, lose all if wrong" },
 };
 
+const COLOUR_BOXES = [
+  { key: "red",    bg: "bg-red-500",    activeBorder: "ring-4 ring-red-200",    label: "Red" },
+  { key: "green",  bg: "bg-green-500",  activeBorder: "ring-4 ring-green-200",  label: "Green" },
+  { key: "yellow", bg: "bg-yellow-400", activeBorder: "ring-4 ring-yellow-200", label: "Yellow" },
+  { key: "blue",   bg: "bg-blue-500",   activeBorder: "ring-4 ring-blue-200",   label: "Blue" },
+];
+
 const normalise = (s) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
 
 function buildLetterBoxes(answer) {
   return (answer || "").trim().split(/\s+/).filter(Boolean).map((w) => w.length);
+}
+
+// Fisher-Yates shuffle (stable per questionIdx seed)
+function shuffleForQuestion(arr, seed) {
+  const a = [...arr];
+  let s = seed;
+  for (let i = a.length - 1; i > 0; i--) {
+    s = ((s * 1664525 + 1013904223) >>> 0);
+    const j = s % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
 export default function PlayPage() {
@@ -27,6 +46,7 @@ export default function PlayPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [live, setLive] = useState(null);
+  const [game, setGame] = useState(null);
   const [guess, setGuess] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [activePowerup, setActivePowerup] = useState(null);
@@ -36,11 +56,18 @@ export default function PlayPage() {
   const [submitting, setSubmitting] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [showPowerupPicker, setShowPowerupPicker] = useState(false);
+  const [tappedColour, setTappedColour] = useState(null); // for colour_flash
   const prevStatus = useRef(null);
   const prevQuestion = useRef(null);
   const nameRef = useRef("");
 
-  // ── Firebase Realtime listener (replaces polling) ─────────────────────────
+  // Fetch static game data once after join
+  useEffect(() => {
+    if (phase !== "lobby" && phase !== "playing" && phase !== "result" && phase !== "ended") return;
+    fetch(`/api/games/${id}`).then((r) => r.json()).then(setGame);
+  }, [id, phase]);
+
+  // ── Firebase Realtime listener ────────────────────────────────────────────
   useEffect(() => {
     if (phase === "join") return;
     const liveRef = dbRef(db, `liveGames/${id}`);
@@ -56,6 +83,7 @@ export default function PlayPage() {
         setPhase("playing");
         setGuess("");
         setFeedback(null);
+        setTappedColour(null);
         setActivePowerup(null);
         setShowPowerupPicker(false);
       }
@@ -67,6 +95,7 @@ export default function PlayPage() {
       if (data.currentQuestion !== prevQuestion.current && data.currentQuestion !== undefined) {
         setGuess("");
         setFeedback(null);
+        setTappedColour(null);
         setActivePowerup(null);
         setShowPowerupPicker(false);
         setImgLoaded(false);
@@ -110,16 +139,15 @@ export default function PlayPage() {
   const handleSubmit = async () => {
     if (!guess.trim() || submitting || feedback?.type === "correct") return;
 
-    // ── Optimistic client-side check — instant feedback ───────────────────
+    // Optimistic client-side check
     const question = live?.question;
     const clientCorrect = Boolean(question?.answer) && normalise(guess) === normalise(question.answer);
     setFeedback(clientCorrect
       ? { type: "correct", msg: "Correct!", pts: "..." }
       : { type: "wrong", msg: "Not quite — try again!" }
     );
-    if (!clientCorrect) { setGuess(""); return; } // wrong: clear and let them retry immediately
+    if (!clientCorrect) { setGuess(""); return; }
 
-    // ── Fire server in background to record score ─────────────────────────
     setSubmitting(true);
     const res = await fetch(`/api/games/${id}/action`, {
       method: "POST",
@@ -132,6 +160,29 @@ export default function PlayPage() {
     setSubmitting(false);
   };
 
+  // ── Colour Flash: tap a colour ────────────────────────────────────────────
+  const handleTapColour = async (colourKey) => {
+    if (submitting) return;
+    const multiAttempt = live?.question?.multiAttempt === true;
+    if (!multiAttempt && tappedColour) return; // locked, already tapped
+
+    setTappedColour(colourKey);
+    setSubmitting(true);
+    await fetch(`/api/games/${id}/action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "TAP_COLOUR", playerName: name.toLowerCase(), colour: colourKey }),
+    });
+    setSubmitting(false);
+  };
+
+  // Shuffle colour boxes deterministically per question
+  const shuffledBoxes = useMemo(() => {
+    const qIdx = live?.currentQuestion ?? 0;
+    return shuffleForQuestion(COLOUR_BOXES, qIdx + 1);
+  }, [live?.currentQuestion]);
+
+  const isColourFlash = game?.template === "colour_flash";
   const question = live?.question;
   const letterGroups = buildLetterBoxes(question?.answer || "");
   const hasAnsweredCorrectly = feedback?.type === "correct";
@@ -146,21 +197,12 @@ export default function PlayPage() {
             <h1 className="text-2xl font-bold">Join Game</h1>
             <p className="text-indigo-200 text-sm mt-1">Enter the room code to play</p>
           </div>
-          <input
-            className="w-full rounded-xl bg-white/20 px-4 py-3 text-white placeholder-white/50 outline-none focus:ring-2 focus:ring-indigo-400"
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-          />
-          <input
-            className="w-full rounded-xl bg-white/20 px-4 py-3 text-white placeholder-white/50 outline-none focus:ring-2 focus:ring-indigo-400 font-mono text-lg tracking-widest text-center"
-            placeholder="ROOM CODE"
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            maxLength={4}
-            onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-          />
+          <input className="w-full rounded-xl bg-white/20 px-4 py-3 text-white placeholder-white/50 outline-none focus:ring-2 focus:ring-indigo-400"
+            placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleJoin()} />
+          <input className="w-full rounded-xl bg-white/20 px-4 py-3 text-white placeholder-white/50 outline-none focus:ring-2 focus:ring-indigo-400 font-mono text-lg tracking-widest text-center"
+            placeholder="ROOM CODE" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+            maxLength={4} onKeyDown={(e) => e.key === "Enter" && handleJoin()} />
           {error && <p className="text-red-300 text-sm text-center">{error}</p>}
           <button onClick={handleJoin} disabled={joining}
             className="w-full rounded-xl bg-indigo-500 py-3 font-bold text-white hover:bg-indigo-600 disabled:opacity-50 transition">
@@ -203,7 +245,60 @@ export default function PlayPage() {
     );
   }
 
-  // ── PLAYING SCREEN ────────────────────────────────────────────────────────
+  // ── COLOUR FLASH PLAYING SCREEN ───────────────────────────────────────────
+  if (phase === "playing" && isColourFlash) {
+    const myTap = live?.taps?.[name.toLowerCase()];
+    const isLocked = !question?.multiAttempt && (tappedColour || (myTap && !myTap.removed));
+    const activeTapColour = tappedColour || myTap?.colour;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 flex flex-col text-white">
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <div className="text-sm text-indigo-300 font-medium">Q{(live?.currentQuestion ?? 0) + 1}</div>
+          <div className="text-sm font-bold text-indigo-300">
+            {playerData?.score ?? 0} pts
+            {playerData?.streak > 1 && <span className="ml-1 text-orange-400">🔥{playerData.streak}</span>}
+          </div>
+        </div>
+
+        {live?.timerEndsAt > 0 && <TimerBar endsAt={live.timerEndsAt} total={question?.timeLimit || 30} />}
+
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-6 space-y-6">
+          <p className="text-indigo-200 text-sm text-center">Watch the host screen — tap the correct colour!</p>
+
+          {/* 2×2 colour box grid */}
+          <div className="grid grid-cols-2 gap-5 w-full max-w-xs">
+            {shuffledBoxes.map((box) => {
+              const isSelected = activeTapColour === box.key;
+              return (
+                <button key={box.key}
+                  onClick={() => handleTapColour(box.key)}
+                  disabled={isLocked || submitting}
+                  className={`aspect-square rounded-2xl ${box.bg} shadow-2xl transition-all duration-150 active:scale-95
+                    ${isSelected ? `${box.activeBorder} scale-105` : "opacity-90 hover:opacity-100"}
+                    ${isLocked && !isSelected ? "opacity-30 cursor-not-allowed" : ""}
+                    ${isLocked ? "cursor-not-allowed" : "cursor-pointer"}`}
+                />
+              );
+            })}
+          </div>
+
+          {isLocked && (
+            <div className="rounded-2xl bg-indigo-600/30 border border-indigo-500 px-6 py-3 text-center">
+              <p className="font-bold text-indigo-200">Tapped! Waiting for host...</p>
+              <div className={`mx-auto mt-2 h-5 w-5 rounded-full ${COLOUR_BOXES.find(b => b.key === activeTapColour)?.bg || "bg-slate-500"}`} />
+            </div>
+          )}
+
+          {question?.multiAttempt && activeTapColour && (
+            <p className="text-xs text-indigo-300">Multi-attempt — tap again to change</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── STANDARD PLAYING SCREEN ───────────────────────────────────────────────
   if (phase === "playing" && question) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 flex flex-col text-white">
@@ -340,6 +435,12 @@ export default function PlayPage() {
             <h2 className="text-2xl font-bold">Round Over</h2>
             {live?.question?.revealedAnswer && (
               <p className="text-indigo-200 text-sm">Answer: <span className="font-bold text-white">{live.question.revealedAnswer}</span></p>
+            )}
+            {/* Show colour flash winner */}
+            {isColourFlash && live?.winnerKey && (
+              <p className="text-yellow-300 font-bold">
+                👑 Winner: {live.players?.[live.winnerKey]?.displayName || live.winnerKey}
+              </p>
             )}
           </div>
           <div className="rounded-2xl bg-white/10 backdrop-blur p-4 text-center">
