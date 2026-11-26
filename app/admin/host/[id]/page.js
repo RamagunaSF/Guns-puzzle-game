@@ -423,6 +423,23 @@ export default function HostGamePage() {
                     {currentQ.mediaUrl && currentQ.mediaType === "video" && (
                       <video src={currentQ.mediaUrl} controls autoPlay className="w-full max-h-56 rounded-xl" />
                     )}
+
+                    {/* Answer letter boxes — same structure players see */}
+                    {currentQ.answer && (
+                      <div className="flex flex-wrap gap-4 justify-center py-2">
+                        {currentQ.answer.trim().split(/\s+/).filter(Boolean).map((word, wi) => (
+                          <div key={wi} className="flex gap-1.5">
+                            {word.split("").map((letter, li) => (
+                              <div key={li}
+                                className="flex h-10 w-8 items-center justify-center rounded-lg border-2 border-blue-300 bg-blue-50 font-bold text-base text-blue-700 shadow-sm">
+                                {letter.toUpperCase()}
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {live.question?.hintRevealed && currentQ.hint && (
                       <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
                         💡 Hint: {currentQ.hint}
