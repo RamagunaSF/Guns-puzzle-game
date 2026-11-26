@@ -138,7 +138,7 @@ export default function HostGamePage() {
                 {!live.answerRevealed && (
                   <button onClick={() => doAction({ action: "REVEAL_ANSWER" })} disabled={loading}
                     className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold hover:bg-emerald-600 disabled:opacity-50">
-                    Reveal Answer Side
+                    Show Answer →
                   </button>
                 )}
                 <button onClick={() => doAction({ action: "CLOSE_QUESTION" })} disabled={loading}
@@ -237,39 +237,42 @@ export default function HostGamePage() {
                   )}
                 </div>
 
-                {/* ── Colour Flash question view ───────────────────────── */}
+                {/* ── Colour Flash: one panel at a time ───────────────── */}
                 {isColourFlash && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-xl bg-slate-700/50 p-3 space-y-2">
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Question Side</p>
-                      {currentQ.questionText && (
-                        <p className="text-white font-semibold text-base">{currentQ.questionText}</p>
-                      )}
-                      {currentQ.questionMediaUrl && currentQ.questionMediaType === "image" && (
-                        <img src={currentQ.questionMediaUrl} alt="" className="max-h-48 rounded-lg mx-auto object-contain" loading="eager" />
-                      )}
-                      {!currentQ.questionText && !currentQ.questionMediaUrl && (
-                        <p className="text-slate-500 text-sm italic">No question content</p>
-                      )}
-                    </div>
-                    <div className="rounded-xl bg-slate-700/50 p-3 space-y-2">
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Answer Side</p>
-                      {live.answerRevealed ? (
-                        <>
-                          {currentQ.answerText && <p className="text-white font-semibold text-base">{currentQ.answerText}</p>}
-                          {currentQ.answerMediaUrl && currentQ.answerMediaType === "image" && (
-                            <img src={currentQ.answerMediaUrl} alt="" className="max-h-48 rounded-lg mx-auto object-contain" />
-                          )}
-                          {!currentQ.answerText && !currentQ.answerMediaUrl && (
-                            <p className="text-slate-500 text-sm italic">No answer content</p>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex h-28 items-center justify-center rounded-lg bg-slate-800 text-slate-500 text-sm italic">
-                          Hidden — click "Reveal Answer Side" to show
-                        </div>
-                      )}
-                    </div>
+                  <div className="rounded-xl bg-slate-700/50 p-4 space-y-3">
+                    {!live.answerRevealed ? (
+                      <>
+                        <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Question</p>
+                        {currentQ.questionText && (
+                          <p className="text-white font-semibold text-lg">{currentQ.questionText}</p>
+                        )}
+                        {currentQ.questionMediaUrl && currentQ.questionMediaType === "image" && (
+                          <img src={currentQ.questionMediaUrl} alt="" className="max-h-56 rounded-lg mx-auto object-contain" loading="eager" />
+                        )}
+                        {currentQ.questionMediaUrl && (currentQ.questionMediaType === "video" || currentQ.questionMediaType === "mov") && (
+                          <video src={currentQ.questionMediaUrl} controls autoPlay className="w-full max-h-56 rounded-lg" />
+                        )}
+                        {!currentQ.questionText && !currentQ.questionMediaUrl && (
+                          <p className="text-slate-500 text-sm italic">No question content</p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Answer</p>
+                        {currentQ.answerText && (
+                          <p className="text-white font-semibold text-lg">{currentQ.answerText}</p>
+                        )}
+                        {currentQ.answerMediaUrl && currentQ.answerMediaType === "image" && (
+                          <img src={currentQ.answerMediaUrl} alt="" className="max-h-56 rounded-lg mx-auto object-contain" />
+                        )}
+                        {currentQ.answerMediaUrl && (currentQ.answerMediaType === "video" || currentQ.answerMediaType === "mov") && (
+                          <video src={currentQ.answerMediaUrl} controls autoPlay className="w-full max-h-56 rounded-lg" />
+                        )}
+                        {!currentQ.answerText && !currentQ.answerMediaUrl && (
+                          <p className="text-slate-500 text-sm italic">No answer content</p>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
 

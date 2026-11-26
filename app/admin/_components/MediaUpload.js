@@ -5,7 +5,7 @@ import { storage } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
 // accept: "image/*" | "audio/*,video/*" | "image/*,video/*,audio/*"
-export default function MediaUpload({ accept = "image/*,image/gif", value, mediaType, onUploaded, onClear, label = "Media" }) {
+export default function MediaUpload({ accept = "image/*,image/gif,video/*,video/quicktime", value, mediaType, onUploaded, onClear, label = "Media" }) {
   const inputRef = useRef(null);
   const [progress, setProgress] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -54,7 +54,7 @@ export default function MediaUpload({ accept = "image/*,image/gif", value, media
           <>
             <span className="text-2xl mb-1">📎</span>
             <p className="text-sm text-slate-500">Drag & drop or <span className="text-indigo-600 font-medium underline">click to browse</span></p>
-            <p className="text-xs text-slate-400 mt-0.5">Images, GIFs, audio, video</p>
+            <p className="text-xs text-slate-400 mt-0.5">Images, GIFs, MOV, MP4, audio</p>
           </>
         )}
 

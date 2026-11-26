@@ -158,9 +158,9 @@ export default function EditGamePage() {
                 <>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="rounded-lg border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Question Side</p>
-                      <MediaUpload label="Image / GIF"
-                        accept="image/*,image/gif"
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Question</p>
+                      <MediaUpload label="Image / GIF / Video"
+                        accept="image/*,image/gif,video/*,video/quicktime"
                         value={q.questionMediaUrl}
                         mediaType={q.questionMediaType}
                         onUploaded={(url, type) => { updateQ(idx, "questionMediaUrl", url); updateQ(idx, "questionMediaType", type); }}
@@ -174,9 +174,9 @@ export default function EditGamePage() {
                       </div>
                     </div>
                     <div className="rounded-lg border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Answer Side</p>
-                      <MediaUpload label="Image / GIF"
-                        accept="image/*,image/gif"
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Answer</p>
+                      <MediaUpload label="Image / GIF / Video"
+                        accept="image/*,image/gif,video/*,video/quicktime"
                         value={q.answerMediaUrl}
                         mediaType={q.answerMediaType}
                         onUploaded={(url, type) => { updateQ(idx, "answerMediaUrl", url); updateQ(idx, "answerMediaType", type); }}
