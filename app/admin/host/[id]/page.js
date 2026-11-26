@@ -23,6 +23,7 @@ export default function HostGamePage() {
   const [joinUrl, setJoinUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [secs, setSecs] = useState(null);
+  const [showCorrectColour, setShowCorrectColour] = useState(false);
   const timerRef = useRef(null);
 
   // ── Load static game data once ────────────────────────────────────────────
@@ -32,10 +33,17 @@ export default function HostGamePage() {
   }, [id]);
 
   // ── Firebase Realtime listener for live state ─────────────────────────────
+  const prevQIdx = useRef(-1);
   useEffect(() => {
     const liveRef = dbRef(db, `liveGames/${id}`);
     const unsub = onValue(liveRef, (snap) => {
-      setLive(snap.val() || { status: "LOBBY", players: {} });
+      const data = snap.val() || { status: "LOBBY", players: {} };
+      setLive(data);
+      // Hide correct colour whenever a new question starts
+      if (data.currentQuestion !== prevQIdx.current) {
+        setShowCorrectColour(false);
+        prevQIdx.current = data.currentQuestion;
+      }
     });
     return () => unsub();
   }, [id]);
@@ -276,12 +284,19 @@ export default function HostGamePage() {
                   </div>
                 )}
 
-                {/* Correct colour indicator (colour flash) */}
+                {/* Correct colour — hidden until admin toggles */}
                 {isColourFlash && currentQ.correctColour && (
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-slate-400">Correct colour:</span>
-                    <div className={`h-8 w-8 rounded-lg ${COLOUR_META[currentQ.correctColour]?.bg}`} />
-                    <span className="text-sm font-bold capitalize">{currentQ.correctColour}</span>
+                    <button onClick={() => setShowCorrectColour((v) => !v)}
+                      className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${showCorrectColour ? "bg-slate-600 text-white" : "bg-indigo-600 hover:bg-indigo-500 text-white"}`}>
+                      {showCorrectColour ? "Hide Correct Colour" : "Reveal Correct Colour"}
+                    </button>
+                    {showCorrectColour && (
+                      <>
+                        <div className={`h-8 w-8 rounded-lg ${COLOUR_META[currentQ.correctColour]?.bg}`} />
+                        <span className="text-sm font-bold capitalize">{currentQ.correctColour}</span>
+                      </>
+                    )}
                   </div>
                 )}
 

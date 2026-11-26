@@ -21,6 +21,17 @@ const COLOUR_BOXES = [
   { key: "blue",   bg: "bg-blue-500",   activeBorder: "ring-4 ring-blue-200",   label: "Blue" },
 ];
 
+// Stroop: text colour hex — must differ from box background
+const STROOP_HEX = { red: "#ef4444", green: "#22c55e", yellow: "#facc15", blue: "#60a5fa" };
+
+// Returns a colour key (and its hex) that is NOT the box's own colour
+// Deterministic per (questionIdx, boxPosition) so all players see the same text
+function stroopFor(boxKey, questionIdx, pos) {
+  const others = COLOUR_BOXES.map((b) => b.key).filter((k) => k !== boxKey);
+  const pick = others[(questionIdx * 3 + pos * 7) % others.length];
+  return { label: COLOUR_BOXES.find((b) => b.key === pick).label, hex: STROOP_HEX[pick] };
+}
+
 const normalise = (s) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
 
 function buildLetterBoxes(answer) {
@@ -268,17 +279,24 @@ export default function PlayPage() {
 
           {/* 2×2 colour box grid */}
           <div className="grid grid-cols-2 gap-5 w-full max-w-xs">
-            {shuffledBoxes.map((box) => {
+            {shuffledBoxes.map((box, pos) => {
               const isSelected = activeTapColour === box.key;
+              const qIdx = live?.currentQuestion ?? 0;
+              const stroop = stroopFor(box.key, qIdx, pos);
               return (
                 <button key={box.key}
                   onClick={() => handleTapColour(box.key)}
                   disabled={isLocked || submitting}
-                  className={`aspect-square rounded-2xl ${box.bg} shadow-2xl transition-all duration-150 active:scale-95
+                  className={`aspect-square rounded-2xl ${box.bg} shadow-2xl transition-all duration-150 active:scale-95 flex items-center justify-center
                     ${isSelected ? `${box.activeBorder} scale-105` : "opacity-90 hover:opacity-100"}
                     ${isLocked && !isSelected ? "opacity-30 cursor-not-allowed" : ""}
                     ${isLocked ? "cursor-not-allowed" : "cursor-pointer"}`}
-                />
+                >
+                  <span className="font-black text-xl select-none drop-shadow-lg"
+                    style={{ color: stroop.hex }}>
+                    {stroop.label.toUpperCase()}
+                  </span>
+                </button>
               );
             })}
           </div>
