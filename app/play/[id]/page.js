@@ -68,8 +68,10 @@ export default function PlayPage() {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [showPowerupPicker, setShowPowerupPicker] = useState(false);
   const [tappedColour, setTappedColour] = useState(null); // for colour_flash
+  const [visibleBoxes, setVisibleBoxes] = useState([]); // animated reveal
   const prevStatus = useRef(null);
   const prevQuestion = useRef(null);
+  const prevBoxesRevealed = useRef(false);
   const nameRef = useRef("");
 
   // Fetch static game data once after join
@@ -110,7 +112,22 @@ export default function PlayPage() {
         setActivePowerup(null);
         setShowPowerupPicker(false);
         setImgLoaded(false);
+        setVisibleBoxes([]);
+        prevBoxesRevealed.current = false;
         if (data.status === "ACTIVE") setPhase("playing");
+      }
+
+      // Animate colour boxes in when admin reveals them
+      if (data.colourBoxesRevealed && !prevBoxesRevealed.current) {
+        prevBoxesRevealed.current = true;
+        setVisibleBoxes([]);
+        [0, 1, 2, 3].forEach((i) => {
+          setTimeout(() => setVisibleBoxes((v) => [...v, i]), i * 130 + 80);
+        });
+      }
+      if (!data.colourBoxesRevealed) {
+        prevBoxesRevealed.current = false;
+        setVisibleBoxes([]);
       }
 
       prevStatus.current = data.status;
@@ -275,37 +292,53 @@ export default function PlayPage() {
         {live?.timerEndsAt > 0 && <TimerBar endsAt={live.timerEndsAt} total={question?.timeLimit || 30} />}
 
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-6 space-y-6">
-          <p className="text-indigo-200 text-sm text-center">Watch the host screen — tap the correct colour!</p>
-
-          {/* 2×2 colour box grid */}
-          <div className="grid grid-cols-2 gap-5 w-full max-w-xs">
-            {shuffledBoxes.map((box, pos) => {
-              const isSelected = activeTapColour === box.key;
-              const qIdx = live?.currentQuestion ?? 0;
-              const stroop = stroopFor(box.key, qIdx, pos);
-              return (
-                <button key={box.key}
-                  onClick={() => handleTapColour(box.key)}
-                  disabled={isLocked || submitting}
-                  className={`aspect-square rounded-2xl ${box.bg} shadow-2xl transition-all duration-150 active:scale-95 flex items-center justify-center
-                    ${isSelected ? `${box.activeBorder} scale-105` : "opacity-90 hover:opacity-100"}
-                    ${isLocked && !isSelected ? "opacity-30 cursor-not-allowed" : ""}
-                    ${isLocked ? "cursor-not-allowed" : "cursor-pointer"}`}
-                >
-                  <span className="font-black text-xl select-none drop-shadow-lg"
-                    style={{ color: stroop.hex }}>
-                    {stroop.label.toUpperCase()}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {isLocked && (
-            <div className="rounded-2xl bg-indigo-600/30 border border-indigo-500 px-6 py-3 text-center">
-              <p className="font-bold text-indigo-200">Tapped! Waiting for host...</p>
-              <div className={`mx-auto mt-2 h-5 w-5 rounded-full ${COLOUR_BOXES.find(b => b.key === activeTapColour)?.bg || "bg-slate-500"}`} />
+          {!live?.colourBoxesRevealed ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="text-4xl animate-pulse">👀</div>
+              <p className="text-indigo-200 text-sm text-center font-medium">Watch the host screen...</p>
+              <p className="text-indigo-400 text-xs text-center">Colour boxes will appear when host reveals them</p>
             </div>
+          ) : (
+            <>
+              <p className="text-indigo-200 text-sm text-center font-medium">Tap the correct colour!</p>
+
+              {/* 2×2 colour box grid with pop-in animation */}
+              <div className="grid grid-cols-2 gap-5 w-full max-w-xs">
+                {shuffledBoxes.map((box, pos) => {
+                  const isSelected = activeTapColour === box.key;
+                  const qIdx = live?.currentQuestion ?? 0;
+                  const stroop = stroopFor(box.key, qIdx, pos);
+                  const isVisible = visibleBoxes.includes(pos);
+                  return (
+                    <button key={box.key}
+                      onClick={() => handleTapColour(box.key)}
+                      disabled={isLocked || submitting || !isVisible}
+                      style={{
+                        transform: isVisible ? "scale(1)" : "scale(0)",
+                        opacity: isVisible ? 1 : 0,
+                        transition: "transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
+                      }}
+                      className={`aspect-square rounded-2xl ${box.bg} shadow-2xl active:scale-95 flex items-center justify-center
+                        ${isSelected ? `${box.activeBorder} scale-105` : "hover:opacity-100"}
+                        ${isLocked && !isSelected ? "opacity-40 cursor-not-allowed" : ""}
+                        ${isLocked ? "cursor-not-allowed" : "cursor-pointer"}`}
+                    >
+                      <span className="font-black text-2xl select-none drop-shadow-lg"
+                        style={{ color: stroop.hex }}>
+                        {stroop.label.toUpperCase()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {isLocked && (
+                <div className="rounded-2xl bg-indigo-600/30 border border-indigo-500 px-6 py-3 text-center">
+                  <p className="font-bold text-indigo-200">Tapped! Waiting for host...</p>
+                  <div className={`mx-auto mt-2 h-5 w-5 rounded-full ${COLOUR_BOXES.find(b => b.key === activeTapColour)?.bg || "bg-slate-500"}`} />
+                </div>
+              )}
+            </>
           )}
 
           {question?.multiAttempt && activeTapColour && (
@@ -454,11 +487,17 @@ export default function PlayPage() {
             {live?.question?.revealedAnswer && (
               <p className="text-indigo-200 text-sm">Answer: <span className="font-bold text-white">{live.question.revealedAnswer}</span></p>
             )}
-            {/* Show colour flash winner */}
             {isColourFlash && live?.winnerKey && (
               <p className="text-yellow-300 font-bold">
                 👑 Winner: {live.players?.[live.winnerKey]?.displayName || live.winnerKey}
               </p>
+            )}
+            {isColourFlash && !live?.winnerKey && live?.status === "LEADERBOARD" && (
+              <div className="rounded-xl bg-white/10 px-4 py-3 text-center space-y-1">
+                <p className="text-2xl">🫠</p>
+                <p className="font-bold text-white">Nobody got it right!</p>
+                <p className="text-indigo-300 text-xs">The correct colour weeps alone...</p>
+              </div>
             )}
           </div>
           <div className="rounded-2xl bg-white/10 backdrop-blur p-4 text-center">

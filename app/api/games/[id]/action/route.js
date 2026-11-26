@@ -60,6 +60,7 @@ export async function POST(req, { params }) {
       submissions: {},
       taps: {},
       answerRevealed: false,
+      colourBoxesRevealed: false,
       winnerKey: null,
       firstCorrectWinner: null,
       resultRevealed: false,
@@ -92,6 +93,7 @@ export async function POST(req, { params }) {
       submissions: {},
       taps: {},
       answerRevealed: false,
+      colourBoxesRevealed: false,
       winnerKey: null,
       firstCorrectWinner: null,
       resultRevealed: false,
@@ -218,6 +220,12 @@ export async function POST(req, { params }) {
   if (action === "REMOVE_TAPPER") {
     const { tapperKey } = body;
     await liveRef.child(`taps/${tapperKey}/removed`).set(true);
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── REVEAL_COLOUR_BOXES (Colour Flash — show boxes to players) ───────────
+  if (action === "REVEAL_COLOUR_BOXES") {
+    await liveRef.child("colourBoxesRevealed").set(true);
     return NextResponse.json({ ok: true });
   }
 

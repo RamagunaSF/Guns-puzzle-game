@@ -143,6 +143,12 @@ export default function HostGamePage() {
             {/* Colour Flash active controls */}
             {isActive && isColourFlash && (
               <>
+                {!live.colourBoxesRevealed && (
+                  <button onClick={() => doAction({ action: "REVEAL_COLOUR_BOXES" })} disabled={loading}
+                    className="rounded-lg bg-indigo-500 px-3 py-1.5 text-sm font-semibold hover:bg-indigo-400 disabled:opacity-50">
+                    Show Colour Boxes to Players
+                  </button>
+                )}
                 {!live.answerRevealed && (
                   <button onClick={() => doAction({ action: "REVEAL_ANSWER" })} disabled={loading}
                     className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold hover:bg-emerald-600 disabled:opacity-50">
@@ -159,7 +165,7 @@ export default function HostGamePage() {
             {isLeaderboard && (
               <button onClick={() => doAction({ action: "NEXT_QUESTION" })} disabled={loading}
                 className="rounded-lg bg-indigo-500 px-4 py-1.5 text-sm font-bold hover:bg-indigo-600 disabled:opacity-50">
-                {qIdx + 1 >= totalQ - 1 ? "End Game →" : "Next Question →"}
+                {qIdx + 1 >= totalQ ? "End Game →" : "Next Question →"}
               </button>
             )}
             {isEnded && (
@@ -258,7 +264,7 @@ export default function HostGamePage() {
                           <img src={currentQ.questionMediaUrl} alt="" className="max-h-56 rounded-lg mx-auto object-contain" loading="eager" />
                         )}
                         {currentQ.questionMediaUrl && (currentQ.questionMediaType === "video" || currentQ.questionMediaType === "mov") && (
-                          <video src={currentQ.questionMediaUrl} controls autoPlay className="w-full max-h-56 rounded-lg" />
+                          <video src={currentQ.questionMediaUrl} controls className="w-full max-h-56 rounded-lg" />
                         )}
                         {!currentQ.questionText && !currentQ.questionMediaUrl && (
                           <p className="text-slate-500 text-sm italic">No question content</p>
@@ -274,7 +280,7 @@ export default function HostGamePage() {
                           <img src={currentQ.answerMediaUrl} alt="" className="max-h-56 rounded-lg mx-auto object-contain" />
                         )}
                         {currentQ.answerMediaUrl && (currentQ.answerMediaType === "video" || currentQ.answerMediaType === "mov") && (
-                          <video src={currentQ.answerMediaUrl} controls autoPlay className="w-full max-h-56 rounded-lg" />
+                          <video src={currentQ.answerMediaUrl} controls className="w-full max-h-56 rounded-lg" />
                         )}
                         {!currentQ.answerText && !currentQ.answerMediaUrl && (
                           <p className="text-slate-500 text-sm italic">No answer content</p>
@@ -345,8 +351,15 @@ export default function HostGamePage() {
                   )}
                 </div>
 
-                {activeTaps.length === 0 && (
+                {activeTaps.length === 0 && isActive && (
                   <p className="text-sm text-slate-500">Waiting for players to tap...</p>
+                )}
+                {activeTaps.length === 0 && isLeaderboard && !live.winnerKey && (
+                  <div className="rounded-xl bg-slate-700 p-4 text-center space-y-1">
+                    <p className="text-2xl">🫠</p>
+                    <p className="font-bold text-slate-200">Nobody tapped anything!</p>
+                    <p className="text-xs text-slate-400">The correct colour is offended.</p>
+                  </div>
                 )}
 
                 <div className="space-y-2 max-h-72 overflow-y-auto">
