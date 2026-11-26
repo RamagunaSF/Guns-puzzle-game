@@ -61,6 +61,7 @@ export async function POST(req, { params }) {
       taps: {},
       answerRevealed: false,
       colourBoxesRevealed: false,
+      correctColourRevealed: false,
       winnerKey: null,
       firstCorrectWinner: null,
       resultRevealed: false,
@@ -94,6 +95,7 @@ export async function POST(req, { params }) {
       taps: {},
       answerRevealed: false,
       colourBoxesRevealed: false,
+      correctColourRevealed: false,
       winnerKey: null,
       firstCorrectWinner: null,
       resultRevealed: false,
@@ -224,14 +226,28 @@ export async function POST(req, { params }) {
   }
 
   // ── REVEAL_COLOUR_BOXES (Colour Flash — show boxes to players) ───────────
+  // Also triggered implicitly by REVEAL_CORRECT_COLOUR
   if (action === "REVEAL_COLOUR_BOXES") {
-    await liveRef.child("colourBoxesRevealed").set(true);
+    await liveRef.update({ colourBoxesRevealed: true });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── REVEAL_CORRECT_COLOUR (Colour Flash — reveals boxes AND broadcasts correctColour) ──
+  if (action === "REVEAL_CORRECT_COLOUR") {
+    await liveRef.update({ colourBoxesRevealed: true, correctColourRevealed: true });
     return NextResponse.json({ ok: true });
   }
 
   // ── REVEAL_ANSWER (Colour Flash answer side) ──────────────────────────────
   if (action === "REVEAL_ANSWER") {
     await liveRef.child("answerRevealed").set(true);
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── CLOSE_GAME (end game immediately from any state) ──────────────────────
+  if (action === "CLOSE_GAME") {
+    await liveRef.update({ status: "ENDED", timerEndsAt: Date.now() });
+    await adminFirestore.collection("games").doc(id).update({ status: "ENDED" });
     return NextResponse.json({ ok: true });
   }
 

@@ -6,6 +6,12 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { ref as dbRef, onValue } from "firebase/database";
+import nextDynamic from "next/dynamic";
+
+const DotLottiePlayer = nextDynamic(
+  () => import("@dotlottie/react-player").then((m) => m.DotLottiePlayer),
+  { ssr: false }
+);
 
 const POWERUP_META = {
   "2X": { label: "2X Points", icon: "⚡", color: "bg-yellow-500", desc: "Double points this round" },
@@ -69,6 +75,7 @@ export default function PlayPage() {
   const [showPowerupPicker, setShowPowerupPicker] = useState(false);
   const [tappedColour, setTappedColour] = useState(null); // for colour_flash
   const [visibleBoxes, setVisibleBoxes] = useState([]); // animated reveal
+  const [showCelebration, setShowCelebration] = useState(false);
   const prevStatus = useRef(null);
   const prevQuestion = useRef(null);
   const prevBoxesRevealed = useRef(false);
@@ -183,8 +190,13 @@ export default function PlayPage() {
       body: JSON.stringify({ action: "SUBMIT_GUESS", playerName: name.toLowerCase(), guess: guess.trim(), activePowerup }),
     });
     const data = await res.json();
-    if (data.isCorrect) setFeedback({ type: "correct", msg: "Correct!", pts: data.points });
-    else if (data.locked) setFeedback({ type: "locked", msg: "Already answered!" });
+    if (data.isCorrect) {
+      setFeedback({ type: "correct", msg: "Correct!", pts: data.points });
+      setShowCelebration(true);
+      setTimeout(() => setShowCelebration(false), 3000);
+    } else if (data.locked) {
+      setFeedback({ type: "locked", msg: "Already answered!" });
+    }
     setSubmitting(false);
   };
 
@@ -300,7 +312,13 @@ export default function PlayPage() {
             </div>
           ) : (
             <>
-              <p className="text-indigo-200 text-sm text-center font-medium">Tap the correct colour!</p>
+              {live?.correctColourRevealed ? (
+                <p className="text-indigo-200 text-sm text-center font-medium">
+                  Correct colour is now shown — did you get it?
+                </p>
+              ) : (
+                <p className="text-indigo-200 text-sm text-center font-medium">Tap the correct colour!</p>
+              )}
 
               {/* 2×2 colour box grid with pop-in animation */}
               <div className="grid grid-cols-2 gap-5 w-full max-w-xs">
@@ -309,6 +327,7 @@ export default function PlayPage() {
                   const qIdx = live?.currentQuestion ?? 0;
                   const stroop = stroopFor(box.key, qIdx, pos);
                   const isVisible = visibleBoxes.includes(pos);
+                  const isCorrectBox = live?.correctColourRevealed && box.key === question?.correctColour;
                   return (
                     <button key={box.key}
                       onClick={() => handleTapColour(box.key)}
@@ -321,12 +340,16 @@ export default function PlayPage() {
                       className={`aspect-square rounded-2xl ${box.bg} shadow-2xl active:scale-95 flex items-center justify-center
                         ${isSelected ? `${box.activeBorder} scale-105` : "hover:opacity-100"}
                         ${isLocked && !isSelected ? "opacity-40 cursor-not-allowed" : ""}
-                        ${isLocked ? "cursor-not-allowed" : "cursor-pointer"}`}
+                        ${isLocked ? "cursor-not-allowed" : "cursor-pointer"}
+                        ${isCorrectBox ? "ring-4 ring-white ring-offset-2 ring-offset-transparent" : ""}`}
                     >
                       <span className="font-black text-2xl select-none drop-shadow-lg"
                         style={{ color: stroop.hex }}>
                         {stroop.label.toUpperCase()}
                       </span>
+                      {isCorrectBox && (
+                        <span className="absolute text-white text-2xl pointer-events-none">✓</span>
+                      )}
                     </button>
                   );
                 })}
@@ -352,7 +375,18 @@ export default function PlayPage() {
   // ── STANDARD PLAYING SCREEN ───────────────────────────────────────────────
   if (phase === "playing" && question) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 flex flex-col text-white">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 flex flex-col text-white relative overflow-hidden">
+        {/* Lottie celebration overlay */}
+        {showCelebration && (
+          <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center">
+            <DotLottiePlayer
+              src="https://lottie.host/d7af2f2c-ee64-4f3e-8a6c-73c6f7b0d7fc/8sJGEsyEMl.lottie"
+              autoplay
+              loop={false}
+              style={{ width: 320, height: 320 }}
+            />
+          </div>
+        )}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <div className="text-sm text-indigo-300 font-medium">Q{(live?.currentQuestion ?? 0) + 1}</div>
           <div className={`font-mono font-bold text-xl ${secs !== null && secs <= 5 ? "text-red-400 animate-pulse" : "text-white"}`}>
@@ -478,8 +512,20 @@ export default function PlayPage() {
   if (phase === "result") {
     const players = Object.values(live?.players || {}).sort((a, b) => b.score - a.score);
     const myRank = players.findIndex((p) => p.name === name.toLowerCase()) + 1;
+    const iAmWinner = isColourFlash && live?.winnerKey === name.toLowerCase();
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-4 text-white">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-4 text-white relative overflow-hidden">
+        {/* Lottie winner celebration */}
+        {iAmWinner && (
+          <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center">
+            <DotLottiePlayer
+              src="https://lottie.host/d7af2f2c-ee64-4f3e-8a6c-73c6f7b0d7fc/8sJGEsyEMl.lottie"
+              autoplay
+              loop={false}
+              style={{ width: 400, height: 400 }}
+            />
+          </div>
+        )}
         <div className="w-full max-w-sm space-y-4">
           <div className="text-center space-y-2">
             <div className="text-5xl">{feedback?.type === "correct" ? "🎉" : "📊"}</div>
