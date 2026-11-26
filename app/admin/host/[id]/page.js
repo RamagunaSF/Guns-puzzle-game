@@ -181,9 +181,16 @@ export default function HostGamePage() {
               </>
             )}
 
-            {/* Colour Flash active controls — single "Reveal Correct Colour" button */}
+            {/* Colour Flash active controls */}
             {isActive && isColourFlash && (
               <>
+                {!live.answerRevealed && (
+                  <button onClick={() => doAction({ action: "REVEAL_ANSWER" })}
+                    disabled={loading}
+                    className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">
+                    Show Answer →
+                  </button>
+                )}
                 <button
                   onClick={async () => {
                     await doAction({ action: "REVEAL_CORRECT_COLOUR" });
