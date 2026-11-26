@@ -424,15 +424,15 @@ export default function HostGamePage() {
                       <video src={currentQ.mediaUrl} controls autoPlay className="w-full max-h-56 rounded-xl" />
                     )}
 
-                    {/* Answer letter boxes — same structure players see */}
+                    {/* Answer letter boxes — blank, same structure players see */}
                     {currentQ.answer && (
                       <div className="flex flex-wrap gap-4 justify-center py-2">
                         {currentQ.answer.trim().split(/\s+/).filter(Boolean).map((word, wi) => (
                           <div key={wi} className="flex gap-1.5">
-                            {word.split("").map((letter, li) => (
+                            {word.split("").map((_, li) => (
                               <div key={li}
-                                className="flex h-10 w-8 items-center justify-center rounded-lg border-2 border-blue-300 bg-blue-50 font-bold text-base text-blue-700 shadow-sm">
-                                {letter.toUpperCase()}
+                                className="flex h-10 w-8 items-center justify-center rounded-lg border-2 border-slate-300 bg-white font-bold text-base text-slate-300 shadow-sm">
+                                _
                               </div>
                             ))}
                           </div>
